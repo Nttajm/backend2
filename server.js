@@ -15,7 +15,7 @@ const app = express()
 app.use(express.json())
 app.use(
   cors({
-    origin: ["http://localhost:5500", "http://127.0.0.1:3000", "http://lcnjoel.com"],
+    origin: ["http://localhost:5500", "http://127.0.0.1:3000", "https://lcnjoel.com"],
     credentials: true,
     methods: ["POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -118,3 +118,4 @@ app.post("/create-checkout-session", async (req, res) => {
 })
 
 app.listen(3005, () => console.log("Server running on port 3005"))
+
