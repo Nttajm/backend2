@@ -106,8 +106,8 @@ app.post("/create-checkout-session", async (req, res) => {
           quantity: item.quantity,
         }
       }),
-      success_url: `http://127.0.0.1:3000/success.html?key=${key}`,
-      cancel_url: `http://127.0.0.1:3000?canceled=true`,
+      success_url: `http://127.0.0.1:3000/jmbins/success.html?key=${key}`,
+      cancel_url: `http://127.0.0.1:3000/jmbins/index.html?canceled=true`,
     })
 
     res.json({ url: session.url })
@@ -118,4 +118,5 @@ app.post("/create-checkout-session", async (req, res) => {
 })
 
 app.listen(3005, () => console.log("Server running on port 3005"))
+
 
