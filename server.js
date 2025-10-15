@@ -36,88 +36,151 @@ function generateKey(length = 8) {
   return key
 }
 
-app.post("/create-checkout-session", async (req, res) => {
+// app.post("/create-checkout-session", async (req, res) => {
+//   try {
+//     const userId = req.body.user
+//     const userName = req.body.userName
+//     const pickup = req.body.pickup || null
+
+//     // Generate unique key
+//     const key = generateKey()
+
+//     // ✅ Save session to Firestore
+//     // await db.collection("checkout-sessions").add({
+//     //   key,
+//     //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//     // })
+
+//     // ✅ Create an order document (pending)
+//     const orderRef = await db.collection("orders").add({
+//       userId,
+//       userName,
+//       pickup,
+//       key,
+//       products: req.body.items,
+//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//       status: "pending",
+//     });
+
+//     // ✅ Link order to user
+//     await db.collection("users")
+//   .doc(userId)
+//   .collection("userOrders")
+//   .add({
+//     orderId: orderRef.id,
+//     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+//   });
+
+
+
+
+
+//     // ✅ Fetch products from Firestore to calculate prices
+//     const snapshot = await db.collection("products").get()
+//     const storeItems = new Map()
+//     snapshot.forEach(doc => {
+//       const data = doc.data()
+//       storeItems.set(doc.id, {
+//         priceInCents: data.price + Math.round(data.price * fees),
+//         name: data.name,
+//         img: data.img,
+//       })
+//     })
+
+//     // ✅ Build Stripe session
+//     const session = await stripe.checkout.sessions.create({
+//       payment_method_types: ["card"],
+//       mode: "payment",
+//       line_items: req.body.items.map(item => {
+//         const storeItem = storeItems.get(item.id)
+//         if (!storeItem) throw new Error(`Product ${item.id} not found`)
+//         return {
+//           price_data: {
+//             currency: "usd",
+//             product_data: {
+//               name: storeItem.name,
+//               images: [storeItem.img],
+//             },
+//             unit_amount: storeItem.priceInCents,
+//           },
+//           quantity: item.quantity,
+//         }
+//       }),
+//       success_url: `http://lcnjoel.com/jmbins/success.html?key=${key}`,
+//       cancel_url: `http://lcnjoel.com/jmbins/index.html?canceled=true`,
+//     })
+
+//     res.json({ url: session.url })
+//   } catch (e) {
+//     console.error("Checkout error:", e)
+//     res.status(500).json({ error: e.message })
+//   }
+// })
+
+
+
+app.post("/create-donation-session", async (req, res) => {
   try {
-    const userId = req.body.user
-    const userName = req.body.userName
-    const pickup = req.body.pickup || null
+    const { amount, recurring } = req.body;
 
-    // Generate unique key
-    const key = generateKey()
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Invalid donation amount." });
+    }
 
-    // ✅ Save session to Firestore
-    // await db.collection("checkout-sessions").add({
-    //   key,
-    //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    // })
+    // Stripe expects amounts in cents
+    const amountInCents = Math.round(amount * 100);
 
-    // ✅ Create an order document (pending)
-    const orderRef = await db.collection("orders").add({
-      userId,
-      userName,
-      pickup,
-      key,
-      products: req.body.items,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      status: "pending",
-    });
+    let session;
 
-    // ✅ Link order to user
-    await db.collection("users")
-  .doc(userId)
-  .collection("userOrders")
-  .add({
-    orderId: orderRef.id,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+    if (recurring) {
+      // ✅ Recurring Donation (Subscription)
+      // Create a price object dynamically (or use pre-made price_id)
+      const price = await stripe.prices.create({
+        unit_amount: amountInCents,
+        currency: "usd",
+        recurring: { interval: "month" }, // monthly recurring donation
+        product_data: {
+          name: `Recurring Donation - $${amount}`,
+        },
+      });
 
-
-
-
-
-    // ✅ Fetch products from Firestore to calculate prices
-    const snapshot = await db.collection("products").get()
-    const storeItems = new Map()
-    snapshot.forEach(doc => {
-      const data = doc.data()
-      storeItems.set(doc.id, {
-        priceInCents: data.price + Math.round(data.price * fees),
-        name: data.name,
-        img: data.img,
-      })
-    })
-
-    // ✅ Build Stripe session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      line_items: req.body.items.map(item => {
-        const storeItem = storeItems.get(item.id)
-        if (!storeItem) throw new Error(`Product ${item.id} not found`)
-        return {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: storeItem.name,
-              images: [storeItem.img],
+      session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_types: ["card"],
+        line_items: [{ price: price.id, quantity: 1 }],
+        success_url: "https://your-ministry-site.com/success",
+        cancel_url: "https://your-ministry-site.com/cancel",
+      });
+    } else {
+      // ✅ One-Time Donation
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: `One-Time Donation - $${amount}` },
+              unit_amount: amountInCents,
             },
-            unit_amount: storeItem.priceInCents,
+            quantity: 1,
           },
-          quantity: item.quantity,
-        }
-      }),
-      success_url: `http://lcnjoel.com/jmbins/success.html?key=${key}`,
-      cancel_url: `http://lcnjoel.com/jmbins/index.html?canceled=true`,
-    })
+        ],
+        success_url: "https://www.youtube.com/watch?v=IkjAsvrRTNw",
+        cancel_url: "https://uxwing.com/error-icon/",
+      });
+    }
 
-    res.json({ url: session.url })
-  } catch (e) {
-    console.error("Checkout error:", e)
-    res.status(500).json({ error: e.message })
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe session error:", err.message);
+    res.status(500).json({ error: "Failed to create Stripe session." });
   }
-})
+});
+
 
 app.listen(3005, () => console.log("Server running on port 3005"))
+
 
 
 
