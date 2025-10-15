@@ -1,7 +1,7 @@
 require("dotenv").config()
 const express = require("express")
 const cors = require("cors")
-const stripe = require("stripe")(process.env.STRIPE_PRIVATE_KEY)
+const stripe = require("stripe")(process.env.STRIPE_TEST_KEY)
 const admin = require("firebase-admin")
 
 // Initialize Firebase Admin
@@ -116,8 +116,28 @@ function generateKey(length = 8) {
 //     res.status(500).json({ error: e.message })
 //   }
 // })
+async function getOrCreateCustomer(userId, email) {
+  const ref = doc(db, "stripe_customers", userId);
+  const snapshot = await getDoc(ref);
 
+  if (snapshot.exists()) {
+    const data = snapshot.data();
+    return data.customerId;
+  }
 
+  // Create new Stripe customer
+  const customer = await stripe.customers.create({
+    email: email || undefined,
+    metadata: { firebaseUID: userId },
+  });
+
+  // Save in Firestore
+  await setDoc(ref, { customerId: customer.id });
+
+  return customer.id;
+}
+
+// ✅ Create Donation Session
 app.post("/create-donation-session", async (req, res) => {
   try {
     const { amount, recurring, userId, email } = req.body;
@@ -218,3 +238,4 @@ app.post("/cancel-subscription", async (req, res) => {
 });
 
 app.listen(3000, () => console.log("Server running on port 3000"));
+
