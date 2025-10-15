@@ -118,43 +118,43 @@ function generateKey(length = 8) {
 // })
 
 
-
 app.post("/create-donation-session", async (req, res) => {
   try {
-    const { amount, recurring } = req.body;
+    const { amount, recurring, userId, email } = req.body;
 
-    if (!amount || amount <= 0) {
+    if (!userId) return res.status(400).json({ error: "Missing userId." });
+    if (!amount || amount <= 0)
       return res.status(400).json({ error: "Invalid donation amount." });
-    }
 
-    // Stripe expects amounts in cents
     const amountInCents = Math.round(amount * 100);
+
+    // Get or create Stripe customer for this user
+    const customerId = await getOrCreateCustomer(userId, email);
 
     let session;
 
     if (recurring) {
-      // ✅ Recurring Donation (Subscription)
-      // Create a price object dynamically (or use pre-made price_id)
+      // Recurring Donation (Subscription)
       const price = await stripe.prices.create({
         unit_amount: amountInCents,
         currency: "usd",
-        recurring: { interval: "month" }, // monthly recurring donation
-        product_data: {
-          name: `Recurring Donation - $${amount}`,
-        },
+        recurring: { interval: "month" },
+        product_data: { name: `Recurring Donation - $${amount}` },
       });
 
       session = await stripe.checkout.sessions.create({
         mode: "subscription",
+        customer: customerId,
         payment_method_types: ["card"],
         line_items: [{ price: price.id, quantity: 1 }],
         success_url: "https://your-ministry-site.com/success",
         cancel_url: "https://your-ministry-site.com/cancel",
       });
     } else {
-      // ✅ One-Time Donation
+      // One-Time Donation
       session = await stripe.checkout.sessions.create({
         mode: "payment",
+        customer: customerId,
         payment_method_types: ["card"],
         line_items: [
           {
@@ -166,8 +166,8 @@ app.post("/create-donation-session", async (req, res) => {
             quantity: 1,
           },
         ],
-        success_url: "https://www.youtube.com/watch?v=IkjAsvrRTNw",
-        cancel_url: "https://uxwing.com/error-icon/",
+        success_url: "https://your-ministry-site.com/success",
+        cancel_url: "https://your-ministry-site.com/cancel",
       });
     }
 
@@ -178,10 +178,43 @@ app.post("/create-donation-session", async (req, res) => {
   }
 });
 
+// ✅ Cancel Recurring Donation
+app.post("/cancel-subscription", async (req, res) => {
+  try {
+    const { userId } = req.body;
 
-app.listen(3005, () => console.log("Server running on port 3005"))
+    if (!userId) return res.status(400).json({ error: "Missing userId." });
 
+    const ref = doc(db, "stripe_customers", userId);
+    const snapshot = await getDoc(ref);
 
+    if (!snapshot.exists())
+      return res.status(404).json({ error: "User not found in database." });
 
+    const { customerId } = snapshot.data();
 
+    // List active subscriptions
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "active",
+      limit: 1,
+    });
 
+    if (subscriptions.data.length === 0)
+      return res
+        .status(404)
+        .json({ error: "No active recurring donations found." });
+
+    const subId = subscriptions.data[0].id;
+
+    // Cancel it
+    await stripe.subscriptions.cancel(subId);
+
+    res.json({ success: true, message: "Recurring donation canceled." });
+  } catch (err) {
+    console.error("Cancel subscription error:", err.message);
+    res.status(500).json({ error: "Failed to cancel subscription." });
+  }
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
