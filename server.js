@@ -117,7 +117,7 @@ function generateKey(length = 8) {
 //   }
 // })
 async function getOrCreateCustomer(userId, email) {
-  const ref = doc(db, "stripe_customers", userId);
+  const ref = doc(db, "cemi_donors", userId);
   const snapshot = await getDoc(ref);
 
   if (snapshot.exists()) {
@@ -205,7 +205,7 @@ app.post("/cancel-subscription", async (req, res) => {
 
     if (!userId) return res.status(400).json({ error: "Missing userId." });
 
-    const ref = doc(db, "stripe_customers", userId);
+    const ref = doc(db, "cemi_donors", userId);
     const snapshot = await getDoc(ref);
 
     if (!snapshot.exists())
@@ -238,4 +238,5 @@ app.post("/cancel-subscription", async (req, res) => {
 });
 
 app.listen(3000, () => console.log("Server running on port 3000"));
+
 
