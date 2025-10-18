@@ -36,122 +36,130 @@ function generateKey(length = 8) {
   return key
 }
 
-// app.post("/create-checkout-session", async (req, res) => {
-//   try {
-//     const userId = req.body.user
-//     const userName = req.body.userName
-//     const pickup = req.body.pickup || null
+/* ============================================================
+   ✅ OLD CHECKOUT SESSION ENDPOINT (COMMENTED OUT BUT KEPT)
+===============================================================
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const userId = req.body.user
+    const userName = req.body.userName
+    const pickup = req.body.pickup || null
 
-//     // Generate unique key
-//     const key = generateKey()
+    // Generate unique key
+    const key = generateKey()
 
-//     // ✅ Save session to Firestore
-//     // await db.collection("checkout-sessions").add({
-//     //   key,
-//     //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//     // })
+    // ✅ Save session to Firestore
+    // await db.collection("checkout-sessions").add({
+    //   key,
+    //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // })
 
-//     // ✅ Create an order document (pending)
-//     const orderRef = await db.collection("orders").add({
-//       userId,
-//       userName,
-//       pickup,
-//       key,
-//       products: req.body.items,
-//       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//       status: "pending",
-//     });
+    // ✅ Create an order document (pending)
+    const orderRef = await db.collection("orders").add({
+      userId,
+      userName,
+      pickup,
+      key,
+      products: req.body.items,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: "pending",
+    });
 
-//     // ✅ Link order to user
-//     await db.collection("users")
-//   .doc(userId)
-//   .collection("userOrders")
-//   .add({
-//     orderId: orderRef.id,
-//     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-//   });
+    // ✅ Link order to user
+    await db.collection("users")
+      .doc(userId)
+      .collection("userOrders")
+      .add({
+        orderId: orderRef.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
+    // ✅ Fetch products from Firestore to calculate prices
+    const snapshot = await db.collection("products").get()
+    const storeItems = new Map()
+    snapshot.forEach(doc => {
+      const data = doc.data()
+      storeItems.set(doc.id, {
+        priceInCents: data.price + Math.round(data.price * fees),
+        name: data.name,
+        img: data.img,
+      })
+    })
 
+    // ✅ Build Stripe session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: req.body.items.map(item => {
+        const storeItem = storeItems.get(item.id)
+        if (!storeItem) throw new Error(`Product ${item.id} not found`)
+        return {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: storeItem.name,
+              images: [storeItem.img],
+            },
+            unit_amount: storeItem.priceInCents,
+          },
+          quantity: item.quantity,
+        }
+      }),
+      success_url: `http://lcnjoel.com/jmbins/success.html?key=${key}`,
+      cancel_url: `http://lcnjoel.com/jmbins/index.html?canceled=true`,
+    })
 
+    res.json({ url: session.url })
+  } catch (e) {
+    console.error("Checkout error:", e)
+    res.status(500).json({ error: e.message })
+  }
+})
+*/
 
-
-//     // ✅ Fetch products from Firestore to calculate prices
-//     const snapshot = await db.collection("products").get()
-//     const storeItems = new Map()
-//     snapshot.forEach(doc => {
-//       const data = doc.data()
-//       storeItems.set(doc.id, {
-//         priceInCents: data.price + Math.round(data.price * fees),
-//         name: data.name,
-//         img: data.img,
-//       })
-//     })
-
-//     // ✅ Build Stripe session
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "payment",
-//       line_items: req.body.items.map(item => {
-//         const storeItem = storeItems.get(item.id)
-//         if (!storeItem) throw new Error(`Product ${item.id} not found`)
-//         return {
-//           price_data: {
-//             currency: "usd",
-//             product_data: {
-//               name: storeItem.name,
-//               images: [storeItem.img],
-//             },
-//             unit_amount: storeItem.priceInCents,
-//           },
-//           quantity: item.quantity,
-//         }
-//       }),
-//       success_url: `http://lcnjoel.com/jmbins/success.html?key=${key}`,
-//       cancel_url: `http://lcnjoel.com/jmbins/index.html?canceled=true`,
-//     })
-
-//     res.json({ url: session.url })
-//   } catch (e) {
-//     console.error("Checkout error:", e)
-//     res.status(500).json({ error: e.message })
-//   }
-// })
+/* ============================================================
+   ✅ FIXED FIRESTORE + STRIPE CUSTOMER HANDLER
+===============================================================
+   Uses Admin SDK style instead of client SDK functions.
+============================================================ */
 async function getOrCreateCustomer(userId, email) {
-  const ref = doc(db, "cemi_donors", userId);
-  const snapshot = await getDoc(ref);
+  const ref = db.collection("cemi_donors").doc(userId)
+  const snapshot = await ref.get()
 
-  if (snapshot.exists()) {
-    const data = snapshot.data();
-    return data.customerId;
+  if (snapshot.exists) {
+    const data = snapshot.data()
+    return data.customerId
   }
 
   // Create new Stripe customer
   const customer = await stripe.customers.create({
     email: email || undefined,
     metadata: { firebaseUID: userId },
-  });
+  })
 
   // Save in Firestore
-  await setDoc(ref, { customerId: customer.id });
+  await ref.set({ customerId: customer.id })
 
-  return customer.id;
+  return customer.id
 }
 
-// ✅ Create Donation Session
+/* ============================================================
+   ✅ CREATE DONATION SESSION (WORKING)
+============================================================ */
 app.post("/create-donation-session", async (req, res) => {
   try {
-    const { amount, recurring, userId, email } = req.body;
+    const { amount, recurring, userId, email } = req.body
 
-    if (!userId) return res.status(400).json({ error: "Missing userId." });
+    if (!userId) return res.status(400).json({ error: "Missing userId." })
     if (!amount || amount <= 0)
-      return res.status(400).json({ error: "Invalid donation amount." });
+      return res.status(400).json({ error: "Invalid donation amount." })
 
-    const amountInCents = Math.round(amount * 100);
+    const amountInCents = Math.round(amount * 100)
 
     // Get or create Stripe customer for this user
-    const customerId = await getOrCreateCustomer(userId, email);
+    const customerId = await getOrCreateCustomer(userId, email)
 
-    let session;
+    let session
 
     if (recurring) {
       // Recurring Donation (Subscription)
@@ -160,7 +168,7 @@ app.post("/create-donation-session", async (req, res) => {
         currency: "usd",
         recurring: { interval: "month" },
         product_data: { name: `Recurring Donation - $${amount}` },
-      });
+      })
 
       session = await stripe.checkout.sessions.create({
         mode: "subscription",
@@ -169,7 +177,7 @@ app.post("/create-donation-session", async (req, res) => {
         line_items: [{ price: price.id, quantity: 1 }],
         success_url: "https://your-ministry-site.com/success",
         cancel_url: "https://your-ministry-site.com/cancel",
-      });
+      })
     } else {
       // One-Time Donation
       session = await stripe.checkout.sessions.create({
@@ -188,55 +196,55 @@ app.post("/create-donation-session", async (req, res) => {
         ],
         success_url: "https://your-ministry-site.com/success",
         cancel_url: "https://your-ministry-site.com/cancel",
-      });
+      })
     }
 
-    res.json({ url: session.url });
+    res.json({ url: session.url })
   } catch (err) {
-    console.error("Stripe session error:", err.message);
-    res.status(500).json({ error: "Failed to create Stripe session." });
+    console.error("Stripe session error:", err)
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-// ✅ Cancel Recurring Donation
+/* ============================================================
+   ✅ CANCEL RECURRING DONATION
+============================================================ */
 app.post("/cancel-subscription", async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId } = req.body
 
-    if (!userId) return res.status(400).json({ error: "Missing userId." });
+    if (!userId) return res.status(400).json({ error: "Missing userId." })
 
-    const ref = doc(db, "cemi_donors", userId);
-    const snapshot = await getDoc(ref);
+    const ref = db.collection("cemi_donors").doc(userId)
+    const snapshot = await ref.get()
 
-    if (!snapshot.exists())
-      return res.status(404).json({ error: "User not found in database." });
+    if (!snapshot.exists)
+      return res.status(404).json({ error: "User not found in database." })
 
-    const { customerId } = snapshot.data();
+    const { customerId } = snapshot.data()
 
     // List active subscriptions
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
       status: "active",
       limit: 1,
-    });
+    })
 
     if (subscriptions.data.length === 0)
       return res
         .status(404)
-        .json({ error: "No active recurring donations found." });
+        .json({ error: "No active recurring donations found." })
 
-    const subId = subscriptions.data[0].id;
+    const subId = subscriptions.data[0].id
 
     // Cancel it
-    await stripe.subscriptions.cancel(subId);
+    await stripe.subscriptions.cancel(subId)
 
-    res.json({ success: true, message: "Recurring donation canceled." });
+    res.json({ success: true, message: "Recurring donation canceled." })
   } catch (err) {
-    console.error("Cancel subscription error:", err.message);
-    res.status(500).json({ error: "Failed to cancel subscription." });
+    console.error("Cancel subscription error:", err.message)
+    res.status(500).json({ error: "Failed to cancel subscription." })
   }
-});
+})
 
-app.listen(3000, () => console.log("Server running on port 3000"));
-
-
+app.listen(3000, () => console.log("✅ Server running on port 3000"))
