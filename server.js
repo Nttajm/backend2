@@ -1,7 +1,7 @@
 require("dotenv").config()
 const express = require("express")
 const cors = require("cors")
-const stripe = require("stripe")(process.env.STRIPE_TEST_KEY)
+const stripe = require("stripe")(process.env.STRIPE_PRIVATE_KEY)
 const admin = require("firebase-admin")
 
 // Initialize Firebase Admin
@@ -248,3 +248,4 @@ app.post("/cancel-subscription", async (req, res) => {
 })
 
 app.listen(3000, () => console.log("✅ Server running on port 3000"))
+
