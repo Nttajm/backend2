@@ -175,8 +175,8 @@ app.post("/create-donation-session", async (req, res) => {
         customer: customerId,
         payment_method_types: ["card"],
         line_items: [{ price: price.id, quantity: 1 }],
-        success_url: "https://your-ministry-site.com/success",
-        cancel_url: "https://your-ministry-site.com/cancel",
+        success_url: "https://lcnjoel.com/ctwc/main/html/thankyou.html",
+        cancel_url: "https://lcnjoel.com/ctwc/main/html/give.html",
       })
     } else {
       // One-Time Donation
@@ -194,8 +194,8 @@ app.post("/create-donation-session", async (req, res) => {
             quantity: 1,
           },
         ],
-        success_url: "https://your-ministry-site.com/success",
-        cancel_url: "https://your-ministry-site.com/cancel",
+        success_url: "https://lcnjoel.com/ctwc/main/html/thankyou.html",
+        cancel_url: "https://lcnjoel.com/ctwc/main/html/give.html",
       })
     }
 
@@ -248,4 +248,5 @@ app.post("/cancel-subscription", async (req, res) => {
 })
 
 app.listen(3000, () => console.log("✅ Server running on port 3000"))
+
 
